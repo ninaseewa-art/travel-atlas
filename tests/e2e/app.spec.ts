@@ -75,3 +75,39 @@ test('подробные тайлы находятся поверх резерв
   expect(order).toBe(true);
   await expect(page.getByText('Тайлы недоступны · базовая карта и точки работают')).toHaveCount(0);
 });
+test('названия стран и городов доступны на глобусе и без тайлов', async ({ page }, info) => {
+  await page.route('https://tile.openstreetmap.org/**', (route) => route.abort());
+  await page.goto('/');
+  await page.getByRole('button', { name: /Посмотреть демонстрационный/ }).click();
+  const toggle = page.getByRole('button', { name: 'Названия', exact: true });
+  await expect(page.locator('.globe-labels .country').first()).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('.globe-labels')).toContainText('Алжир');
+  await toggle.click();
+  await expect(page.locator('.globe-labels')).toHaveCount(0);
+  await toggle.click();
+  await expect(page.locator('.globe-labels .country').first()).toBeVisible();
+  await page.screenshot({
+    path: `test-results/${info.project.name}-geographic-globe.png`,
+    fullPage: true,
+  });
+  const globe = page.getByRole('region', { name: /3D-глобус/ });
+  await globe.focus();
+  for (let i = 0; i < 6; i++) {
+    await globe.press('+');
+    // Each keyboard zoom animates for 200 ms; let it finish before the next step.
+    await page.waitForTimeout(250);
+  }
+  await expect(page.locator('.globe-labels .city').first()).toBeVisible();
+  await page.getByRole('main').getByRole('button', { name: 'Карта', exact: true }).click();
+  await expect(page.getByText('Тайлы недоступны · базовая карта и точки работают')).toBeVisible();
+  await expect(page.locator('.map-labels .country').first()).toBeVisible();
+  const map = page.locator('.leaflet-host');
+  // Zoom into a visible map region; more city labels become available as the scale increases.
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await expect(page.locator('.map-labels .city').first()).toBeVisible();
+  await expect(map).toBeVisible();
+  await page.screenshot({
+    path: `test-results/${info.project.name}-geographic-map.png`,
+    fullPage: true,
+  });
+});
