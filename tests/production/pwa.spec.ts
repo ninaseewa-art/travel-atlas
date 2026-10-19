@@ -29,5 +29,5 @@ test('production PWA: manifest, иконки, service worker, оболочка �
   await page.getByRole('button', { name: /Посмотреть демонстрационный/ }).click();
   await page.getByRole('button', { name: 'Карта', exact: true }).click();
   await expect(page.locator('.map-dot')).toHaveCount(5);
-  await expect(page.locator('.leaflet-overlay-pane path')).not.toHaveCount(0);
+  await expect(page.locator('.leaflet-atlas-base-pane path')).not.toHaveCount(0);
 });
