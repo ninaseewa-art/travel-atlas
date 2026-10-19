@@ -5,6 +5,8 @@ import type { GlobeMethods } from 'react-globe.gl';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { category } from './domain';
+import GlobeLabels from './GlobeLabels';
+import { drawLabels, layoutLabels } from './geography';
 import type { Place } from './domain';
 const Globe = lazy(() => import('react-globe.gl'));
 function webgl() {
@@ -60,6 +62,8 @@ export function Map2D({
   selectRef.current = onSelect;
   pickRef.current = onPick;
   const [offline, setOffline] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
+  const labelLayer = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!host.current) return;
     const m = L.map(host.current, { zoomControl: false, worldCopyJump: true }).setView([28, 12], 2);
@@ -137,9 +141,51 @@ export function Map2D({
         animate: !matchMedia('(prefers-reduced-motion: reduce)').matches,
       });
   }, [selected]);
+  useEffect(() => {
+    const m = map.current,
+      el = labelLayer.current;
+    if (!m || !el || !offline || !showLabels) return;
+    const render = () => {
+      const size = m.getSize();
+      const project = (p: { lat: number; lng: number }) => {
+        // Choose the world copy nearest to the current map center.
+        const lng = p.lng + 360 * Math.round((m.getCenter().lng - p.lng) / 360);
+        const point = m.latLngToContainerPoint([p.lat, lng]);
+        return point.y < 56 || point.y > size.y - 76 ? null : point;
+      };
+      drawLabels(
+        el,
+        layoutLabels(
+          m.getZoom() + 1,
+          size.x,
+          size.y,
+          project,
+          places.map(project).filter((p) => p !== null),
+        ),
+      );
+    };
+    render();
+    m.on('move zoom resize', render);
+    return () => {
+      m.off('move zoom resize', render);
+      el.replaceChildren();
+    };
+  }, [offline, showLabels, places]);
   return (
     <div className="map-world">
       <div ref={host} className="leaflet-host" aria-label="Двумерная карта мест" />
+      {offline && showLabels && (
+        <div ref={labelLayer} className="geo-label-overlay map-labels" aria-hidden="true" />
+      )}
+      {offline && (
+        <button
+          className="geo-label-toggle"
+          aria-pressed={showLabels}
+          onClick={() => setShowLabels(!showLabels)}
+        >
+          Названия
+        </button>
+      )}
       {offline && (
         <div className="map-notice">Тайлы недоступны · базовая карта и точки работают</div>
       )}
@@ -165,6 +211,7 @@ function GlobeView({
   const [size, setSize] = useState({ width: 800, height: 700 });
   const [alt, setAlt] = useState(2.2);
   const [ready, setReady] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
   const [idle, setIdle] = useState(true);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -296,6 +343,14 @@ function GlobeView({
           }}
         />
       </Suspense>
+      <GlobeLabels globe={ref} ready={ready} enabled={showLabels} places={data} />
+      <button
+        className="geo-label-toggle"
+        aria-pressed={showLabels}
+        onClick={() => setShowLabels(!showLabels)}
+      >
+        Названия
+      </button>
     </div>
   );
 }

@@ -11,3 +11,4 @@ Screenshot OCR: Tesseract.js (Apache-2.0), tesseract.js-core / Tesseract (Apache
 Explicit place search: Nominatim / © OpenStreetMap contributors, https://nominatim.org/release-docs/latest/api/Overview/ ; use policy https://operations.osmfoundation.org/policies/nominatim/ . No automatic OCR text or image upload to the geocoder.
 
 Night Earth: NASA / Visible Earth, distributed with three-globe (example/img/earth-night.jpg). NASA imagery is public domain. https://visibleearth.nasa.gov/collection/1484/blue-marble
+Country and city label coordinates and multilingual names: Natural Earth, public domain. ne_110m_admin_0_countries and ne_50m_populated_places, downloaded from https://github.com/nvkelso/natural-earth-vector/tree/master/geojson . Compact local data: src/geography.json. Country names and label locations follow that dataset.

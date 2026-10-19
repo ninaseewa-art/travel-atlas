@@ -429,3 +429,70 @@ fieldset legend,
     background: #fffefa;
   }
 }
+.geo-label-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 2;
+}
+.map-labels {
+  z-index: 450;
+}
+.geo-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  font:
+    500 12px/20px -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  color: #344f48;
+  text-shadow:
+    0 1px 3px white,
+    1px 0 3px white,
+    -1px 0 3px white;
+}
+.geo-label.country {
+  font-weight: 650;
+  letter-spacing: 0.4px;
+}
+.geo-label.city {
+  font-size: 11px;
+}
+.geo-label.city::before {
+  content: '•';
+  margin-right: 4px;
+}
+.geo-label.night {
+  color: #f1efdb;
+  text-shadow:
+    0 1px 3px #020b16,
+    0 0 5px #020b16,
+    1px 0 3px #020b16,
+    -1px 0 3px #020b16;
+}
+.geo-label.night.country {
+  color: #d3e6ef;
+}
+.geo-label-toggle {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  z-index: 700;
+  border: 1px solid #cbd8cc;
+  background: #fffffff0;
+  color: #35594e;
+  border-radius: 9px;
+  padding: 8px 12px;
+  min-height: 44px;
+  font-size: 12px;
+}
+.geo-label-toggle[aria-pressed='false'] {
+  background: #f0f2ec;
+  color: #687976;
+}
+.globe-labels ~ .geo-label-toggle {
+  z-index: 5;
+}
