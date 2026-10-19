@@ -1,22 +1,26 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { MapPin, Save } from 'lucide-react';
+import { MapPin, Save, ScanText, Pencil, X } from 'lucide-react';
 import { categories, normalizeTags, placeSchema, duplicateOf } from './domain';
 import type { Place, Collection } from './domain';
 import Modal from './Modal';
 import { Map2D } from './World';
+import ScreenshotImport from './ScreenshotImport';
+import type { ScreenshotDraft } from './ScreenshotImport';
 export default function Editor({
   initial,
   places,
   collections,
   onClose,
   onSave,
+  canSave = true,
 }: {
   initial: Place;
   places: Place[];
   collections: Collection[];
   onClose: () => void;
-  onSave: (p: Place, date?: string) => Promise<void>;
+  onSave: (p: Place, date?: string, screenshot?: File) => Promise<void>;
+  canSave?: boolean;
 }) {
   const [p, setP] = useState(initial),
     [tags, setTags] = useState(initial.tags.join(', ')),
@@ -24,13 +28,43 @@ export default function Editor({
     [busy, setBusy] = useState(false),
     [map, setMap] = useState(false),
     [date, setDate] = useState(''),
+    [method, setMethod] = useState<'manual' | 'screenshot'>('manual'),
+    [attachment, setAttachment] = useState<File | undefined>(undefined),
     [coordinates, setCoordinates] = useState({
       lat: initial.id ? String(initial.lat) : '',
       lng: initial.id ? String(initial.lng) : '',
     });
   const field = (key: keyof Place, value: unknown) => setP((v) => ({ ...v, [key]: value }));
+  const applyScreenshot = (draft: ScreenshotDraft) => {
+    if (
+      p.name &&
+      !confirm('Заменить название и выбранные поля текущего черновика данными со скриншота?')
+    )
+      return;
+    setP((v) => ({
+      ...v,
+      ...draft.fields,
+      ...(draft.location
+        ? {
+            country: draft.location.country,
+            city: draft.location.city,
+            region: draft.location.region,
+            address: draft.location.address,
+          }
+        : {}),
+    }));
+    setCoordinates(
+      draft.location
+        ? { lat: String(draft.location.lat), lng: String(draft.location.lng) }
+        : { lat: '', lng: '' },
+    );
+    setAttachment(draft.attachment);
+    setMethod('manual');
+    setError('');
+  };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!canSave) return;
     setError('');
     const result = placeSchema.safeParse({ ...p, ...coordinates, tags: normalizeTags(tags) });
     if (!result.success) {
@@ -56,7 +90,7 @@ export default function Editor({
       return;
     setBusy(true);
     try {
-      await onSave({ ...candidate, ...result.data }, date || undefined);
+      await onSave({ ...candidate, ...result.data }, date || undefined, attachment);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally {
@@ -71,324 +105,370 @@ export default function Editor({
       }}
       wide
     >
-      <form onSubmit={submit} className="editor">
-        <p className="muted">
-          Сначала сохраните место, затем добавьте фотографии в его карточке. Координаты
-          подтверждаете вы.
-        </p>
-        <div className="form-grid">
-          <label className="span-2">
-            Название *
-            <input
-              autoComplete="off"
-              required
-              maxLength={200}
-              value={p.name}
-              onChange={(e) => field('name', e.target.value)}
-              placeholder="Место, в которое хочется вернуться"
-            />
-          </label>
-          <label>
-            Страна *
-            <input
-              required
-              value={p.country}
-              onChange={(e) => field('country', e.target.value)}
-              placeholder="Италия"
-            />
-          </label>
-          <label>
-            Город
-            <input value={p.city} onChange={(e) => field('city', e.target.value)} />
-          </label>
-          <label>
-            Регион
-            <input value={p.region} onChange={(e) => field('region', e.target.value)} />
-          </label>
-          <label>
-            Адрес
-            <input value={p.address} onChange={(e) => field('address', e.target.value)} />
-          </label>
-          <label>
-            Категория
-            <select
-              aria-label="Категория"
-              value={p.primary_category}
-              onChange={(e) => field('primary_category', e.target.value)}
+      {!p.id && (
+        <div className="import-method">
+          <div className="segmented" role="group" aria-label="Способ добавления">
+            <button
+              type="button"
+              aria-pressed={method === 'manual'}
+              className={method === 'manual' ? 'active' : ''}
+              onClick={() => setMethod('manual')}
             >
-              {categories.map((c) => (
-                <option key={c[0]} value={c[0]}>
-                  {c[2]} {c[1]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Статус
-            <select
-              aria-label="Статус"
-              value={p.status}
-              onChange={(e) => field('status', e.target.value)}
+              <Pencil size={16} />
+              Вручную
+            </button>
+            <button
+              type="button"
+              aria-pressed={method === 'screenshot'}
+              className={method === 'screenshot' ? 'active' : ''}
+              onClick={() => setMethod('screenshot')}
             >
-              <option value="want_to_go">Мечтаем</option>
-              <option value="visited">Уже были</option>
-            </select>
-          </label>
-          <label>
-            Широта *
-            <input
-              type="number"
-              step="any"
-              required
-              min={-90}
-              max={90}
-              value={coordinates.lat}
-              onChange={(e) => setCoordinates((v) => ({ ...v, lat: e.target.value }))}
-            />
-          </label>
-          <label>
-            Долгота *
-            <input
-              type="number"
-              step="any"
-              required
-              min={-180}
-              max={180}
-              value={coordinates.lng}
-              onChange={(e) => setCoordinates((v) => ({ ...v, lng: e.target.value }))}
-            />
-          </label>
-        </div>
-        <button type="button" className="secondary" onClick={() => setMap(!map)}>
-          <MapPin size={16} />
-          {map ? 'Скрыть карту' : 'Выбрать координаты на карте'}
-        </button>
-        {map && (
-          <div className="picker">
-            <Map2D
-              places={[]}
-              onSelect={() => {}}
-              onPick={(lat, lng) => setCoordinates({ lat: String(lat), lng: String(lng) })}
-            />
+              <ScanText size={16} />
+              По скриншоту
+            </button>
           </div>
-        )}
-        <div className="form-grid">
-          <label className="span-2">
-            Описание
-            <textarea
-              value={p.description}
-              onChange={(e) => field('description', e.target.value)}
-              rows={3}
-            />
-          </label>
-          <label className="span-2">
-            Личные заметки
-            <textarea value={p.notes} onChange={(e) => field('notes', e.target.value)} rows={3} />
-          </label>
-          <label>
-            Официальный сайт
-            <input
-              type="url"
-              placeholder="https://…"
-              value={p.website_url}
-              onChange={(e) => field('website_url', e.target.value)}
-            />
-          </label>
-          <label>
-            Бронирование / билеты
-            <input
-              type="url"
-              placeholder="https://…"
-              value={p.booking_url}
-              onChange={(e) => field('booking_url', e.target.value)}
-            />
-          </label>
-          <label>
-            Сезон
-            <select
-              aria-label="Сезон"
-              value={p.season}
-              onChange={(e) => field('season', e.target.value)}
-            >
-              <option value="">Не указан</option>
-              {['Весна', 'Лето', 'Осень', 'Зима', 'Круглый год'].map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Добавить дату посещения
-            <input
-              type="date"
-              value={date}
-              max={new Date().toLocaleDateString('en-CA')}
-              onChange={(e) => {
-                setDate(e.target.value);
-                if (e.target.value) field('status', 'visited');
-              }}
-            />
-          </label>
-          <label className="span-2">
-            Теги через запятую
-            <input
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="горы, вдвоём, длинные выходные"
-              list="tag-options"
-            />
-            <datalist id="tag-options">
-              {[...new Set(places.flatMap((p) => p.tags))].map((t) => (
-                <option key={t} value={t} />
-              ))}
-            </datalist>
-          </label>
+          {!canSave && (
+            <p className="import-warning">
+              Демонстрация импорта. Для сохранения места войдите в своё пространство.
+            </p>
+          )}
         </div>
-        <fieldset>
-          <legend>Коллекции · можно выбрать несколько</legend>
-          <div className="chips">
-            {collections.map((c) => (
-              <label key={c.id} className="check-chip">
-                <input
-                  type="checkbox"
-                  checked={p.collection_ids.includes(c.id)}
-                  onChange={(e) =>
-                    field(
-                      'collection_ids',
-                      e.target.checked
-                        ? [...p.collection_ids, c.id]
-                        : p.collection_ids.filter((id) => id !== c.id),
-                    )
-                  }
-                />
-                {c.name}
-              </label>
-            ))}
-            {!collections.length && (
-              <span className="muted">Создайте коллекцию в разделе «Коллекции».</span>
+      )}
+      {method === 'screenshot' ? (
+        <ScreenshotImport onApply={applyScreenshot} onCancel={() => setMethod('manual')} />
+      ) : (
+        <form onSubmit={submit} className="editor">
+          {attachment && (
+            <div className="import-attachment">
+              <ScanText size={16} />
+              <span>Скриншот будет добавлен в приватную карточку после сохранения.</span>
+              <button
+                type="button"
+                aria-label="Не сохранять скриншот"
+                onClick={() => setAttachment(undefined)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+          <p className="muted">
+            Сначала сохраните место, затем добавьте фотографии в его карточке. Координаты
+            подтверждаете вы.
+          </p>
+          <div className="form-grid">
+            <label className="span-2">
+              Название *
+              <input
+                autoComplete="off"
+                required
+                maxLength={200}
+                value={p.name}
+                onChange={(e) => field('name', e.target.value)}
+                placeholder="Место, в которое хочется вернуться"
+              />
+            </label>
+            <label>
+              Страна *
+              <input
+                required
+                value={p.country}
+                onChange={(e) => field('country', e.target.value)}
+                placeholder="Италия"
+              />
+            </label>
+            <label>
+              Город
+              <input value={p.city} onChange={(e) => field('city', e.target.value)} />
+            </label>
+            <label>
+              Регион
+              <input value={p.region} onChange={(e) => field('region', e.target.value)} />
+            </label>
+            <label>
+              Адрес
+              <input value={p.address} onChange={(e) => field('address', e.target.value)} />
+            </label>
+            <label>
+              Категория
+              <select
+                aria-label="Категория"
+                value={p.primary_category}
+                onChange={(e) => field('primary_category', e.target.value)}
+              >
+                {categories.map((c) => (
+                  <option key={c[0]} value={c[0]}>
+                    {c[2]} {c[1]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Статус
+              <select
+                aria-label="Статус"
+                value={p.status}
+                onChange={(e) => field('status', e.target.value)}
+              >
+                <option value="want_to_go">Мечтаем</option>
+                <option value="visited">Уже были</option>
+              </select>
+            </label>
+            <label>
+              Широта *
+              <input
+                type="number"
+                step="any"
+                required
+                min={-90}
+                max={90}
+                value={coordinates.lat}
+                onChange={(e) => setCoordinates((v) => ({ ...v, lat: e.target.value }))}
+              />
+            </label>
+            <label>
+              Долгота *
+              <input
+                type="number"
+                step="any"
+                required
+                min={-180}
+                max={180}
+                value={coordinates.lng}
+                onChange={(e) => setCoordinates((v) => ({ ...v, lng: e.target.value }))}
+              />
+            </label>
+          </div>
+          <button type="button" className="secondary" onClick={() => setMap(!map)}>
+            <MapPin size={16} />
+            {map ? 'Скрыть карту' : 'Выбрать координаты на карте'}
+          </button>
+          {map && (
+            <div className="picker">
+              <Map2D
+                places={[]}
+                onSelect={() => {}}
+                onPick={(lat, lng) => setCoordinates({ lat: String(lat), lng: String(lng) })}
+              />
+            </div>
+          )}
+          <div className="form-grid">
+            <label className="span-2">
+              Описание
+              <textarea
+                value={p.description}
+                onChange={(e) => field('description', e.target.value)}
+                rows={3}
+              />
+            </label>
+            <label className="span-2">
+              Личные заметки
+              <textarea value={p.notes} onChange={(e) => field('notes', e.target.value)} rows={3} />
+            </label>
+            <label>
+              Официальный сайт
+              <input
+                type="url"
+                placeholder="https://…"
+                value={p.website_url}
+                onChange={(e) => field('website_url', e.target.value)}
+              />
+            </label>
+            <label>
+              Бронирование / билеты
+              <input
+                type="url"
+                placeholder="https://…"
+                value={p.booking_url}
+                onChange={(e) => field('booking_url', e.target.value)}
+              />
+            </label>
+            <label>
+              Сезон
+              <select
+                aria-label="Сезон"
+                value={p.season}
+                onChange={(e) => field('season', e.target.value)}
+              >
+                <option value="">Не указан</option>
+                {['Весна', 'Лето', 'Осень', 'Зима', 'Круглый год'].map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Добавить дату посещения
+              <input
+                type="date"
+                value={date}
+                max={new Date().toLocaleDateString('en-CA')}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  if (e.target.value) field('status', 'visited');
+                }}
+              />
+            </label>
+            <label className="span-2">
+              Теги через запятую
+              <input
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="горы, вдвоём, длинные выходные"
+                list="tag-options"
+              />
+              <datalist id="tag-options">
+                {[...new Set(places.flatMap((p) => p.tags))].map((t) => (
+                  <option key={t} value={t} />
+                ))}
+              </datalist>
+            </label>
+          </div>
+          <fieldset>
+            <legend>Коллекции · можно выбрать несколько</legend>
+            <div className="chips">
+              {collections.map((c) => (
+                <label key={c.id} className="check-chip">
+                  <input
+                    type="checkbox"
+                    checked={p.collection_ids.includes(c.id)}
+                    onChange={(e) =>
+                      field(
+                        'collection_ids',
+                        e.target.checked
+                          ? [...p.collection_ids, c.id]
+                          : p.collection_ids.filter((id) => id !== c.id),
+                      )
+                    }
+                  />
+                  {c.name}
+                </label>
+              ))}
+              {!collections.length && (
+                <span className="muted">Создайте коллекцию в разделе «Коллекции».</span>
+              )}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Ориентировочная цена</legend>
+            <label className="check-line">
+              <input
+                type="checkbox"
+                checked={!!p.price}
+                onChange={(e) =>
+                  field(
+                    'price',
+                    e.target.checked
+                      ? {
+                          amount_min: 0,
+                          currency: 'EUR',
+                          unit: p.primary_category === 'hotels' ? 'night' : 'visit',
+                          source_url: '',
+                          checked_at: null,
+                        }
+                      : null,
+                  )
+                }
+              />
+              Указать цену (без автоматического обновления)
+            </label>
+            {p.price && (
+              <div className="form-grid">
+                <label>
+                  От
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    step="0.01"
+                    value={p.price.amount_min}
+                    onChange={(e) =>
+                      field('price', { ...p.price, amount_min: Number(e.target.value) })
+                    }
+                  />
+                </label>
+                <label>
+                  До (необязательно)
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={p.price.amount_max ?? ''}
+                    onChange={(e) =>
+                      field('price', {
+                        ...p.price,
+                        amount_max: e.target.value === '' ? null : Number(e.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Валюта
+                  <select
+                    aria-label="Валюта"
+                    value={p.price.currency}
+                    onChange={(e) => field('price', { ...p.price, currency: e.target.value })}
+                  >
+                    {Intl.supportedValuesOf('currency').map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Единица
+                  <select
+                    aria-label="Единица"
+                    value={p.price.unit}
+                    onChange={(e) => field('price', { ...p.price, unit: e.target.value })}
+                  >
+                    <option value="night">За ночь</option>
+                    <option value="ticket">За билет</option>
+                    <option value="person">На человека</option>
+                    <option value="visit">За посещение</option>
+                  </select>
+                </label>
+                <label>
+                  Источник цены
+                  <input
+                    type="url"
+                    value={p.price.source_url}
+                    onChange={(e) => field('price', { ...p.price, source_url: e.target.value })}
+                    placeholder="https://…"
+                  />
+                </label>
+                <label>
+                  Дата проверки
+                  <input
+                    type="date"
+                    value={p.price.checked_at ?? ''}
+                    onChange={(e) =>
+                      field('price', { ...p.price, checked_at: e.target.value || null })
+                    }
+                  />
+                </label>
+              </div>
             )}
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Ориентировочная цена</legend>
+          </fieldset>
           <label className="check-line">
             <input
               type="checkbox"
-              checked={!!p.price}
-              onChange={(e) =>
-                field(
-                  'price',
-                  e.target.checked
-                    ? {
-                        amount_min: 0,
-                        currency: 'EUR',
-                        unit: p.primary_category === 'hotels' ? 'night' : 'visit',
-                        source_url: '',
-                        checked_at: null,
-                      }
-                    : null,
-                )
-              }
+              checked={p.favorite}
+              onChange={(e) => field('favorite', e.target.checked)}
             />
-            Указать цену (без автоматического обновления)
+            В избранном
           </label>
-          {p.price && (
-            <div className="form-grid">
-              <label>
-                От
-                <input
-                  type="number"
-                  required
-                  min={0}
-                  step="0.01"
-                  value={p.price.amount_min}
-                  onChange={(e) =>
-                    field('price', { ...p.price, amount_min: Number(e.target.value) })
-                  }
-                />
-              </label>
-              <label>
-                До (необязательно)
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={p.price.amount_max ?? ''}
-                  onChange={(e) =>
-                    field('price', {
-                      ...p.price,
-                      amount_max: e.target.value === '' ? null : Number(e.target.value),
-                    })
-                  }
-                />
-              </label>
-              <label>
-                Валюта
-                <select
-                  aria-label="Валюта"
-                  value={p.price.currency}
-                  onChange={(e) => field('price', { ...p.price, currency: e.target.value })}
-                >
-                  {Intl.supportedValuesOf('currency').map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Единица
-                <select
-                  aria-label="Единица"
-                  value={p.price.unit}
-                  onChange={(e) => field('price', { ...p.price, unit: e.target.value })}
-                >
-                  <option value="night">За ночь</option>
-                  <option value="ticket">За билет</option>
-                  <option value="person">На человека</option>
-                  <option value="visit">За посещение</option>
-                </select>
-              </label>
-              <label>
-                Источник цены
-                <input
-                  type="url"
-                  value={p.price.source_url}
-                  onChange={(e) => field('price', { ...p.price, source_url: e.target.value })}
-                  placeholder="https://…"
-                />
-              </label>
-              <label>
-                Дата проверки
-                <input
-                  type="date"
-                  value={p.price.checked_at ?? ''}
-                  onChange={(e) =>
-                    field('price', { ...p.price, checked_at: e.target.value || null })
-                  }
-                />
-              </label>
-            </div>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
           )}
-        </fieldset>
-        <label className="check-line">
-          <input
-            type="checkbox"
-            checked={p.favorite}
-            onChange={(e) => field('favorite', e.target.checked)}
-          />
-          В избранном
-        </label>
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
-        <footer className="form-actions">
-          <span className="muted">Сохранение в наше приватное пространство</span>
-          <button disabled={busy} className="primary" type="submit">
-            <Save size={16} />
-            {busy ? 'Сохраняем…' : 'Сохранить место'}
-          </button>
-        </footer>
-      </form>
+          <footer className="form-actions">
+            <span className="muted">Сохранение в наше приватное пространство</span>
+            <button disabled={busy || !canSave} className="primary" type="submit">
+              <Save size={16} />
+              {busy ? 'Сохраняем…' : 'Сохранить место'}
+            </button>
+          </footer>
+        </form>
+      )}
     </Modal>
   );
 }

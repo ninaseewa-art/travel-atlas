@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv } from 'vite';
+import { readFileSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(({ mode }) => {
@@ -42,12 +43,21 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,png,jpg,svg,woff2,geojson,txt}'],
+          globIgnores: ['**/ocr/**'],
           maximumFileSizeToCacheInBytes: 5000000,
           navigateFallbackDenylist: [/^\/auth/],
           runtimeCaching: [],
         },
       }),
     ],
+    preview: {
+      headers: {
+        'Content-Security-Policy': readFileSync(
+          new URL('./public/_headers', import.meta.url),
+          'utf8',
+        ).match(/Content-Security-Policy: (.+)/)![1],
+      },
+    },
     build: { chunkSizeWarningLimit: 1800 },
   };
 });
