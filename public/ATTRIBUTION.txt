@@ -3,7 +3,12 @@ Distributed via three-globe: https://github.com/vasturiano/three-globe/tree/mast
 Source: https://visibleearth.nasa.gov/collection/1484/blue-marble
 Natural Earth land boundaries, 1:110m: public domain. https://www.naturalearthdata.com/about/terms-of-use/
 Downloaded from https://github.com/nvkelso/natural-earth-vector/blob/master/geojson/ne_110m_land.geojson
-2D online tiles: © OpenStreetMap contributors, ODbL; https://www.openstreetmap.org/copyright
-Tile policy: https://operations.osmfoundation.org/policies/tiles/ — no prefetching, no offline tile download.
+2D online vector tiles: OpenFreeMap / OpenMapTiles / © OpenStreetMap contributors, ODbL. https://openfreemap.org/ https://www.openstreetmap.org/copyright . No tile prefetch or offline tile downloads. MapLibre GL JS: BSD-3-Clause.
+Russian-only map style derived from OpenFreeMap Liberty: https://github.com/hyperknot/openfreemap-styles . Modified text layers use name:ru only. Full upstream style license: /MAP_STYLE_LICENSE.md (BSD).
 React MIT; Vite MIT; Three.js MIT; react-globe.gl MIT; Leaflet BSD-2-Clause; lucide ISC; Supabase JS MIT; TanStack Query MIT; Zod MIT.
 Illustrated placeholders and app icons are generated for this project, not photographs of real destinations.
+Screenshot OCR: Tesseract.js (Apache-2.0), tesseract.js-core / Tesseract (Apache-2.0); Russian/English tessdata models, Apache-2.0. Local assets are built from integrity-pinned npm packages. Licenses: /ocr/TESSERACT-JS-LICENSE.txt and /ocr/TESSERACT-CORE-LICENSE.txt.
+Explicit place search: Nominatim / © OpenStreetMap contributors, https://nominatim.org/release-docs/latest/api/Overview/ ; use policy https://operations.osmfoundation.org/policies/nominatim/ . No automatic OCR text or image upload to the geocoder.
+
+Night Earth: NASA / Visible Earth, distributed with three-globe (example/img/earth-night.jpg). NASA imagery is public domain. https://visibleearth.nasa.gov/collection/1484/blue-marble
+Country and city label coordinates and multilingual names: Natural Earth, public domain. ne_110m_admin_0_countries and ne_50m_populated_places, downloaded from https://github.com/nvkelso/natural-earth-vector/tree/master/geojson . Compact local data: src/geography.json. Country names and label locations follow that dataset.

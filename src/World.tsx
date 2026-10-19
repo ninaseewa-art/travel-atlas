@@ -1,11 +1,15 @@
 import { Component, Suspense, lazy, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { Mesh, MeshPhongMaterial } from 'three';
 import type { GlobeMethods } from 'react-globe.gl';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { category } from './domain';
+import GlobeLabels from './GlobeLabels';
+import { drawLabels, layoutLabels } from './geography';
 import type { Place } from './domain';
 const Globe = lazy(() => import('react-globe.gl'));
+const VectorMap = lazy(() => import('./VectorMap'));
 function webgl() {
   try {
     const c = document.createElement('canvas');
@@ -40,7 +44,7 @@ class Guard extends Component<{ children: ReactNode; fallback: ReactNode }, { fa
     return this.state.failed ? this.props.fallback : this.props.children;
   }
 }
-export function Map2D({
+function FallbackMap2D({
   places,
   selected,
   onSelect,
@@ -59,11 +63,19 @@ export function Map2D({
   selectRef.current = onSelect;
   pickRef.current = onPick;
   const [offline, setOffline] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
+  const labelLayer = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!host.current) return;
     const m = L.map(host.current, { zoomControl: false, worldCopyJump: true }).setView([28, 12], 2);
     map.current = m;
-    L.control.zoom({ position: 'bottomright' }).addTo(m);
+    // A vector layer in overlayPane stays above raster tiles even after bringToBack().
+    const basePane = m.createPane('atlas-base');
+    basePane.style.zIndex = '150';
+    basePane.style.pointerEvents = 'none';
+    L.control
+      .zoom({ position: 'bottomright', zoomInTitle: 'Приблизить', zoomOutTitle: 'Отдалить' })
+      .addTo(m);
     markers.current = L.layerGroup().addTo(m);
     const controller = new AbortController();
     fetch('/land.geojson', { signal: controller.signal })
@@ -71,25 +83,15 @@ export function Map2D({
       .then((data) => {
         if (!controller.signal.aborted)
           L.geoJSON(data, {
-            style: { color: '#728f81', weight: 0.6, fillColor: '#263f43', fillOpacity: 1 },
+            pane: 'atlas-base',
+            style: { color: '#a8bcb0', weight: 0.5, fillColor: '#eef1e7', fillOpacity: 1 },
             interactive: false,
           })
             .addTo(m)
             .bringToBack();
       })
       .catch(() => {});
-    const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    });
-    let failures = 0;
-    tiles.on('tileerror', () => {
-      if (++failures >= 3) {
-        m.removeLayer(tiles);
-        setOffline(true);
-      }
-    });
-    tiles.addTo(m);
+    setOffline(true);
     m.on('click', (e: L.LeafletMouseEvent) => {
       let lng = ((((e.latlng.lng + 180) % 360) + 360) % 360) - 180;
       lng = Math.round(lng * 1e6) / 1e6;
@@ -131,14 +133,78 @@ export function Map2D({
         animate: !matchMedia('(prefers-reduced-motion: reduce)').matches,
       });
   }, [selected]);
+  useEffect(() => {
+    const m = map.current,
+      el = labelLayer.current;
+    if (!m || !el || !offline || !showLabels) return;
+    const render = () => {
+      const size = m.getSize();
+      const project = (p: { lat: number; lng: number }) => {
+        // Choose the world copy nearest to the current map center.
+        const lng = p.lng + 360 * Math.round((m.getCenter().lng - p.lng) / 360);
+        const point = m.latLngToContainerPoint([p.lat, lng]);
+        return point.y < 56 || point.y > size.y - 76 ? null : point;
+      };
+      drawLabels(
+        el,
+        layoutLabels(
+          m.getZoom() + 1,
+          size.x,
+          size.y,
+          project,
+          places.map(project).filter((p) => p !== null),
+        ),
+      );
+    };
+    render();
+    m.on('move zoom resize', render);
+    return () => {
+      m.off('move zoom resize', render);
+      el.replaceChildren();
+    };
+  }, [offline, showLabels, places]);
   return (
     <div className="map-world">
       <div ref={host} className="leaflet-host" aria-label="Двумерная карта мест" />
-      {offline && (
-        <div className="map-notice">Тайлы недоступны · базовая карта и точки работают</div>
+      {offline && showLabels && (
+        <div ref={labelLayer} className="geo-label-overlay map-labels" aria-hidden="true" />
       )}
+      {offline && (
+        <button
+          className="geo-label-toggle"
+          aria-pressed={showLabels}
+          onClick={() => setShowLabels(!showLabels)}
+        >
+          Названия
+        </button>
+      )}
+      {offline && <div className="map-notice">Базовая карта · названия на русском</div>}
       {onPick && <div className="map-notice">Нажмите на карту, чтобы выбрать координаты</div>}
     </div>
+  );
+}
+export function Map2D(props: {
+  places: Place[];
+  selected?: Place | null;
+  onSelect: (p: Place) => void;
+  onPick?: (lat: number, lng: number) => void;
+}) {
+  const [vector, setVector] = useState(webgl);
+  const fallback = <FallbackMap2D {...props} />;
+  return vector ? (
+    <Guard fallback={fallback}>
+      <Suspense
+        fallback={
+          <div className="map-world">
+            <div className="world-loading">Загружаем карту…</div>
+          </div>
+        }
+      >
+        <VectorMap {...props} onFail={() => setVector(false)} />
+      </Suspense>
+    </Guard>
+  ) : (
+    fallback
   );
 }
 function GlobeView({
@@ -159,13 +225,14 @@ function GlobeView({
   const [size, setSize] = useState({ width: 800, height: 700 });
   const [alt, setAlt] = useState(2.2);
   const [ready, setReady] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
   const [idle, setIdle] = useState(true);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   useEffect(() => {
     const texture = new Image();
     texture.onerror = onFail;
-    texture.src = '/textures/earth.jpg';
+    texture.src = '/textures/earth-night.jpg';
     return () => {
       texture.onerror = null;
     };
@@ -198,6 +265,12 @@ function GlobeView({
         reduced ? 0 : 1100,
       );
   }, [selected, ready, reduced]);
+  useEffect(() => {
+    if (!ready) return;
+    const canvas = ref.current?.renderer().domElement;
+    canvas?.addEventListener('webglcontextlost', onFail, { once: true });
+    return () => canvas?.removeEventListener('webglcontextlost', onFail);
+  }, [ready, onFail]);
   const data = clusterPlaces(places, alt);
   const interact = () => {
     setIdle(false);
@@ -237,9 +310,9 @@ function GlobeView({
           width={size.width}
           height={size.height}
           backgroundColor="rgba(0,0,0,0)"
-          globeImageUrl="/textures/earth.jpg"
+          globeImageUrl="/textures/earth-night.jpg"
           showAtmosphere
-          atmosphereColor="#77b8d1"
+          atmosphereColor="#68b4ef"
           atmosphereAltitude={0.16}
           animateIn={!reduced}
           htmlElementsData={data}
@@ -272,13 +345,30 @@ function GlobeView({
           }}
           onZoom={(p) => setAlt(p.altitude)}
           onGlobeReady={() => {
+            ref.current?.scene().traverse((object) => {
+              const material = (object as Mesh).material as MeshPhongMaterial | undefined;
+              if (material?.isMeshPhongMaterial && material.map) {
+                // The surface texture also emits light, so cities stay lit while rotating.
+                material.emissive.set('#ffffff');
+                material.emissiveMap = material.map;
+                material.emissiveIntensity = 1.4;
+                material.shininess = 0;
+                material.needsUpdate = true;
+              }
+            });
             setReady(true);
             ref.current?.pointOfView({ lat: 28, lng: 22, altitude: 2.2 }, 0);
-            const canvas = ref.current?.renderer().domElement;
-            canvas?.addEventListener('webglcontextlost', onFail, { once: true });
           }}
         />
       </Suspense>
+      <GlobeLabels globe={ref} ready={ready} enabled={showLabels} places={data} />
+      <button
+        className="geo-label-toggle"
+        aria-pressed={showLabels}
+        onClick={() => setShowLabels(!showLabels)}
+      >
+        Названия
+      </button>
     </div>
   );
 }

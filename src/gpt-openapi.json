@@ -1,0 +1,426 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Наш атлас — личный помощник",
+    "version": "1.0.0",
+    "description": "Чтение и сохранение только в атлас владельца ключа. Скриншоты обрабатывает ChatGPT; сервер не вызывает платные AI API."
+  },
+  "servers": [
+    {
+      "url": "https://YOUR_PROJECT.supabase.co/functions/v1/atlas-gpt"
+    }
+  ],
+  "security": [
+    {
+      "AtlasKey": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "AtlasKey": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "PlaceInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "Для изменения существующей карточки обязательно взять свежий updated_at из getAtlasPlace. Не перезаписывать после конфликта без перечитывания."
+          },
+          "name": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "Готовый русский текст: описание, особенности локации, атмосфера/возможные впечатления (субъективно), практические советы и источники. Не выдумывать факты."
+          },
+          "notes": {
+            "type": "string"
+          },
+          "website_url": {
+            "type": "string"
+          },
+          "booking_url": {
+            "type": "string"
+          },
+          "season": {
+            "type": "string"
+          },
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "lng": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "primary_category": {
+            "type": "string",
+            "enum": [
+              "hotels",
+              "restaurants",
+              "theatres",
+              "opera",
+              "ballet",
+              "museums",
+              "galleries",
+              "libraries",
+              "castles",
+              "architecture",
+              "history",
+              "nature",
+              "mountains",
+              "waterfalls",
+              "lakes",
+              "beaches",
+              "gardens",
+              "bookshops",
+              "cinemas",
+              "concerts",
+              "festivals",
+              "adventures",
+              "cities",
+              "other"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "want_to_go",
+              "visited"
+            ]
+          },
+          "favorite": {
+            "type": "boolean"
+          },
+          "tags": {
+            "type": "array",
+            "maxItems": 30,
+            "items": {
+              "type": "string"
+            }
+          },
+          "collection_ids": {
+            "type": "array",
+            "maxItems": 30,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "price": {
+            "description": "Только подтверждённая цена с датой/источником; иначе не передавать или null.",
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "amount_min": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "amount_max": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "currency": {
+                    "type": "string"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "night",
+                      "ticket",
+                      "person",
+                      "visit"
+                    ]
+                  },
+                  "source_url": {
+                    "type": "string"
+                  },
+                  "checked_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date"
+                  }
+                },
+                "required": [
+                  "amount_min",
+                  "currency",
+                  "unit",
+                  "source_url",
+                  "checked_at"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/places": {
+      "get": {
+        "operationId": "searchAtlasPlaces",
+        "summary": "Поиск сохранённых мест и проверка дублей",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Результат операции; у списка places и next_offset, у сохранения id/name/updated_at/saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ключ недействителен, отозван или истёк."
+          },
+          "409": {
+            "description": "STALE_WRITE: перечитать карточку; REQUEST_CONFLICT: не переиспользовать request_id для другого запроса."
+          },
+          "429": {
+            "description": "До 60 успешных вызовов в минуту. Подождать и повторить."
+          },
+          "503": {
+            "description": "Функция или миграция ещё не настроены; не утверждать, что сохранение удалось."
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveAtlasPlace",
+        "summary": "Создать место или обновить существующее. Для обновления id и свежий updated_at.",
+        "x-openai-isConsequential": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "request_id",
+                  "place"
+                ],
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 120,
+                    "description": "Уникальный UUID для этого действия. При сетевом повторе использовать тот же ключ и тот же JSON."
+                  },
+                  "place": {
+                    "$ref": "#/components/schemas/PlaceInput"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Результат операции; у списка places и next_offset, у сохранения id/name/updated_at/saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ключ недействителен, отозван или истёк."
+          },
+          "409": {
+            "description": "STALE_WRITE: перечитать карточку; REQUEST_CONFLICT: не переиспользовать request_id для другого запроса."
+          },
+          "429": {
+            "description": "До 60 успешных вызовов в минуту. Подождать и повторить."
+          },
+          "503": {
+            "description": "Функция или миграция ещё не настроены; не утверждать, что сохранение удалось."
+          }
+        }
+      }
+    },
+    "/places/{id}": {
+      "get": {
+        "operationId": "getAtlasPlace",
+        "summary": "Получить карточку и текущий updated_at перед изменением",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Результат операции; у списка places и next_offset, у сохранения id/name/updated_at/saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ключ недействителен, отозван или истёк."
+          },
+          "409": {
+            "description": "STALE_WRITE: перечитать карточку; REQUEST_CONFLICT: не переиспользовать request_id для другого запроса."
+          },
+          "429": {
+            "description": "До 60 успешных вызовов в минуту. Подождать и повторить."
+          },
+          "503": {
+            "description": "Функция или миграция ещё не настроены; не утверждать, что сохранение удалось."
+          }
+        }
+      }
+    },
+    "/collections": {
+      "get": {
+        "operationId": "listAtlasCollections",
+        "summary": "Читать существующие коллекции",
+        "x-openai-isConsequential": false,
+        "responses": {
+          "200": {
+            "description": "Результат операции; у списка places и next_offset, у сохранения id/name/updated_at/saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ключ недействителен, отозван или истёк."
+          },
+          "409": {
+            "description": "STALE_WRITE: перечитать карточку; REQUEST_CONFLICT: не переиспользовать request_id для другого запроса."
+          },
+          "429": {
+            "description": "До 60 успешных вызовов в минуту. Подождать и повторить."
+          },
+          "503": {
+            "description": "Функция или миграция ещё не настроены; не утверждать, что сохранение удалось."
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAtlasCollection",
+        "summary": "Создать коллекцию или найти её по совпадающему названию",
+        "x-openai-isConsequential": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "request_id",
+                  "name"
+                ],
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 120
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Результат операции; у списка places и next_offset, у сохранения id/name/updated_at/saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ключ недействителен, отозван или истёк."
+          },
+          "409": {
+            "description": "STALE_WRITE: перечитать карточку; REQUEST_CONFLICT: не переиспользовать request_id для другого запроса."
+          },
+          "429": {
+            "description": "До 60 успешных вызовов в минуту. Подождать и повторить."
+          },
+          "503": {
+            "description": "Функция или миграция ещё не настроены; не утверждать, что сохранение удалось."
+          }
+        }
+      }
+    }
+  }
+}

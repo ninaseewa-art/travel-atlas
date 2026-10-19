@@ -61,6 +61,7 @@ import {
 import World from './World';
 import Modal from './Modal';
 import Editor from './Editor';
+import GptConnection from './GptConnection';
 const message = (e: unknown) =>
   e instanceof Error
     ? e.message
@@ -381,20 +382,25 @@ function Atlas({
       setPending(false);
     }
   };
-  const save = async (p: Place, date?: string) => {
+  const save = async (p: Place, date?: string, screenshot?: File) => {
+    if (demo) throw new Error('Для сохранения войдите в своё пространство.');
     if (!online) throw new Error('Нет сети — место не сохранено. Не закрывайте форму.');
     const id = await savePlace({ ...p, workspace_id: w! }, date);
+    let photoWarning = '';
+    if (screenshot) {
+      try {
+        await uploadPhoto(w!, id, screenshot, 'Скриншот, добавленный владельцем', 0);
+      } catch (e) {
+        photoWarning = `Место сохранено, но скриншот загрузить не удалось: ${message(e)}. Добавьте его повторно через «Добавить фотографии» в карточке.`;
+      }
+    }
     await refresh();
     setSelectedId(id);
     setEditor(null);
-    setNotice('Место сохранено в базе.');
+    setNotice(photoWarning || 'Место сохранено в базе.');
   };
   const newPlace = () => {
-    if (demo) {
-      setNotice('В демопросмотре сохранение отключено. Подключите Supabase по README.');
-      return;
-    }
-    setEditor({ ...blankPlace(), workspace_id: w! });
+    setEditor({ ...blankPlace(), workspace_id: w ?? '' });
   };
   const nav = (kind: string) => {
     setSelectedId(null);
@@ -883,6 +889,7 @@ function Atlas({
           collections={collections}
           onClose={() => setEditor(null)}
           onSave={save}
+          canSave={!demo}
         />
       )}
       {filterOpen && (
@@ -903,7 +910,7 @@ function Atlas({
               <h3>Личный мир для двоих</h3>
               <p>
                 Доступ проверяется в базе данных. Фотографии хранятся в приватном bucket. Внешние
-                AI-сервисы не используются.
+                AI-сервисы не вызываются приложением; ChatGPT можно подключить отдельно ниже.
               </p>
             </div>
             <p className="muted">
@@ -938,6 +945,7 @@ function Atlas({
               <RefreshCw size={17} />
               Обновить данные
             </button>
+            <GptConnection workspace={w ?? ''} disabled={demo || !online} />
             <h3>На домашнем экране iPhone</h3>
             <p>
               Откройте опубликованный HTTPS-сайт в Safari → «Поделиться» → «На экран “Домой”» →
@@ -946,8 +954,8 @@ function Atlas({
             <h3>Сеть и приватность</h3>
             <p>
               Для изменения данных нужен интернет. Оболочка кэшируется, личные API-ответы и фото —
-              нет. Карта OSM получает координаты просматриваемых тайлов; 3D-глобус и его текстура
-              загружаются с вашего сайта.
+              нет. Карта OpenFreeMap/OSM получает координаты просматриваемых тайлов; 3D-глобус и его
+              текстура загружаются с вашего сайта.
             </p>
             <h3>Бесплатное использование</h3>
             <p>

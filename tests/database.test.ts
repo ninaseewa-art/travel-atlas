@@ -41,7 +41,12 @@ beforeAll(async () => {
  create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
  alter table storage.objects enable row level security;grant select,insert,update,delete on storage.objects to authenticated;
  create publication supabase_realtime;`);
-  for (const file of ['001_atlas.sql', '002_ordering.sql', '003_validation.sql'])
+  for (const file of [
+    '001_atlas.sql',
+    '002_ordering.sql',
+    '003_validation.sql',
+    '004_gpt_actions.sql',
+  ])
     await pg.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'));
   await pg.query(
     'insert into auth.users(id,email,email_confirmed_at) values($1,$2,now()),($3,$4,now()),($5,$6,now())',
@@ -222,5 +227,123 @@ describe.sequential('PostgreSQL: настоящие миграции и RLS в P
     await pg.query('delete from places where id=$1', [pid]);
     for (const t of ['places', 'place_tags', 'collection_places', 'prices', 'visits'])
       expect(await scalar(`select count(*)::int from ${t}`)).toBe(0);
+  });
+});
+
+describe.sequential('ChatGPT capability: реальные SQL и границы доступа', () => {
+  it('изолирует атлас, сохраняет/читает/обновляет, защищает повторы и отзыв ключа', async () => {
+    await asUser(u3);
+    await expect(pg.query('select create_gpt_connection($1)', [w])).rejects.toThrow(
+      'ACCESS_DENIED',
+    );
+    await asUser(u1);
+    const token = await scalar<string>('select create_gpt_connection($1)', [w]);
+    expect(token).toMatch(/^atlas_[a-f0-9]{64}$/);
+    await pg.exec('reset role');
+    expect(
+      await scalar<string>('select token_hash from gpt_connections where workspace_id=$1', [w]),
+    ).not.toBe(token);
+    await pg.query("select set_config('request.jwt.claim.sub','',false)");
+    await pg.exec('set role anon');
+    await expect(pg.query('select * from gpt_connections')).rejects.toThrow();
+    await expect(
+      pg.query('select gpt_atlas($1,$2,$3)', ['atlas_' + '0'.repeat(64), 'list', {}]),
+    ).rejects.toThrow('INVALID_TOKEN');
+    const call = <T>(action: string, body: object = {}) =>
+      scalar<T>('select gpt_atlas($1,$2,$3)', [token, action, body]);
+    const body = {
+      request_id: 'request-00000001',
+      place: payload({
+        workspace_id: w2,
+        tags: ['замок', 'романтика'],
+        notes: 'Личное пожелание',
+        description: 'О месте\nЗамок\nАтмосфера\nОщущение сказки',
+      }),
+    };
+    const saved = await call<{ id: string; updated_at: string; saved: boolean }>('save', body);
+    expect(saved.saved).toBe(true);
+    expect(await call('save', body)).toEqual(saved);
+    await expect(call('save', { ...body, place: payload({ name: 'Другое' }) })).rejects.toThrow(
+      'REQUEST_CONFLICT',
+    );
+    const list = await call<{
+      places: { id: string; notes: string; collection_ids: string[]; tags: string[] }[];
+    }>('list');
+    expect(list.places).toHaveLength(1);
+    expect(list.places[0].notes).toBe('Личное пожелание');
+    expect(await scalar('select auth.uid()')).toBe(null);
+    const col = await call<{ id: string }>('create_collection', {
+      name: 'Сказочные замки',
+      request_id: 'collection-000001',
+    });
+    await call('save', {
+      request_id: 'request-00000002',
+      place: {
+        id: saved.id,
+        updated_at: saved.updated_at,
+        favorite: true,
+        collection_ids: [col.id],
+      },
+    });
+    const changed = await call<{
+      places: { notes: string; tags: string[]; favorite: boolean; updated_at: string }[];
+    }>('get', { id: saved.id });
+    expect(changed.places[0].favorite).toBe(true);
+    expect(changed.places[0].notes).toBe('Личное пожелание');
+    expect(changed.places[0].tags).toContain('замок');
+    await expect(
+      call('save', {
+        request_id: 'request-00000003',
+        place: { id: saved.id, updated_at: '2000-01-01T00:00:00Z', favorite: false },
+      }),
+    ).rejects.toThrow('STALE_WRITE');
+    await pg.exec('reset role');
+    await pg.query("select set_config('request.jwt.claim.sub',$1,false)", [u3]);
+    const foreign = await scalar<string>(
+      "insert into places(workspace_id,name,country,lat,lng,primary_category,created_by) values($1,'Чужое','Италия',45,10,'castles',$2) returning id",
+      [w2, u3],
+    );
+    await pg.exec('set role anon');
+    expect((await call<{ places: unknown[] }>('get', { id: foreign })).places).toHaveLength(0);
+    await expect(
+      call('save', {
+        request_id: 'request-00000004',
+        place: { id: foreign, updated_at: changed.places[0].updated_at, name: 'Взлом' },
+      }),
+    ).rejects.toThrow('NOT_FOUND');
+    await expect(call('delete', { id: saved.id })).rejects.toThrow('INVALID_ACTION');
+    await asUser(u1);
+    await pg.query('select revoke_gpt_connection($1)', [w]);
+    await pg.exec('reset role; set role anon');
+    await expect(call('list')).rejects.toThrow('INVALID_TOKEN');
+    await asUser(u1);
+    const replacement = await scalar<string>('select create_gpt_connection($1)', [w]);
+    expect(replacement).not.toBe(token);
+    await pg.exec('reset role');
+    await pg.query(
+      'update gpt_connections set rate_count=60,rate_window=now() where workspace_id=$1',
+      [w],
+    );
+    await pg.exec('set role anon');
+    await expect(scalar('select gpt_atlas($1,$2,$3)', [replacement, 'list', {}])).rejects.toThrow(
+      'RATE_LIMIT',
+    );
+    await pg.exec('reset role');
+    await pg.query('update gpt_connections set rate_count=0 where workspace_id=$1', [w]);
+    await pg.query('delete from memberships where workspace_id=$1 and user_id=$2', [w, u1]);
+    await pg.exec('set role anon');
+    await expect(scalar('select gpt_atlas($1,$2,$3)', [replacement, 'list', {}])).rejects.toThrow(
+      'INVALID_TOKEN',
+    );
+    await pg.exec('reset role');
+    await pg.query('insert into memberships(workspace_id,user_id) values($1,$2)', [w, u1]);
+    await pg.query(
+      "update gpt_connections set expires_at=now()-interval '1 second' where workspace_id=$1",
+      [w],
+    );
+    await pg.exec('set role anon');
+    await expect(scalar('select gpt_atlas($1,$2,$3)', [replacement, 'list', {}])).rejects.toThrow(
+      'INVALID_TOKEN',
+    );
   });
 });
