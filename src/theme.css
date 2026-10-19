@@ -496,3 +496,19 @@ fieldset legend,
 .globe-labels ~ .geo-label-toggle {
   z-index: 5;
 }
+.vector-map-host {
+  width: 100%;
+  height: 100%;
+  background: #c3dce2;
+}
+.vector-map-host .maplibregl-ctrl-group {
+  border-radius: 9px;
+  overflow: hidden;
+}
+.vector-map-host .maplibregl-ctrl button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.vector-map-host .maplibregl-marker {
+  cursor: pointer;
+}

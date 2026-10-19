@@ -61,6 +61,7 @@ import {
 import World from './World';
 import Modal from './Modal';
 import Editor from './Editor';
+import GptConnection from './GptConnection';
 const message = (e: unknown) =>
   e instanceof Error
     ? e.message
@@ -909,7 +910,7 @@ function Atlas({
               <h3>Личный мир для двоих</h3>
               <p>
                 Доступ проверяется в базе данных. Фотографии хранятся в приватном bucket. Внешние
-                AI-сервисы не используются.
+                AI-сервисы не вызываются приложением; ChatGPT можно подключить отдельно ниже.
               </p>
             </div>
             <p className="muted">
@@ -944,6 +945,7 @@ function Atlas({
               <RefreshCw size={17} />
               Обновить данные
             </button>
+            <GptConnection workspace={w ?? ''} disabled={demo || !online} />
             <h3>На домашнем экране iPhone</h3>
             <p>
               Откройте опубликованный HTTPS-сайт в Safari → «Поделиться» → «На экран “Домой”» →
@@ -952,8 +954,8 @@ function Atlas({
             <h3>Сеть и приватность</h3>
             <p>
               Для изменения данных нужен интернет. Оболочка кэшируется, личные API-ответы и фото —
-              нет. Карта OSM получает координаты просматриваемых тайлов; 3D-глобус и его текстура
-              загружаются с вашего сайта.
+              нет. Карта OpenFreeMap/OSM получает координаты просматриваемых тайлов; 3D-глобус и его
+              текстура загружаются с вашего сайта.
             </p>
             <h3>Бесплатное использование</h3>
             <p>

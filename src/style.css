@@ -2524,3 +2524,29 @@ legend {
     min-width: 85px;
   }
 }
+
+.gpt-connection {
+  margin: 26px 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.gpt-connection button {
+  margin: 8px 0;
+  min-height: 44px;
+}
+.gpt-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.gpt-secret {
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid #bed1b4;
+  border-radius: 10px;
+  background: #f0f5eb;
+}
+.gpt-secret input {
+  font: 14px monospace;
+}

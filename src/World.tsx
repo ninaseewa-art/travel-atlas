@@ -9,6 +9,7 @@ import GlobeLabels from './GlobeLabels';
 import { drawLabels, layoutLabels } from './geography';
 import type { Place } from './domain';
 const Globe = lazy(() => import('react-globe.gl'));
+const VectorMap = lazy(() => import('./VectorMap'));
 function webgl() {
   try {
     const c = document.createElement('canvas');
@@ -43,7 +44,7 @@ class Guard extends Component<{ children: ReactNode; fallback: ReactNode }, { fa
     return this.state.failed ? this.props.fallback : this.props.children;
   }
 }
-export function Map2D({
+function FallbackMap2D({
   places,
   selected,
   onSelect,
@@ -72,7 +73,9 @@ export function Map2D({
     const basePane = m.createPane('atlas-base');
     basePane.style.zIndex = '150';
     basePane.style.pointerEvents = 'none';
-    L.control.zoom({ position: 'bottomright' }).addTo(m);
+    L.control
+      .zoom({ position: 'bottomright', zoomInTitle: 'Приблизить', zoomOutTitle: 'Отдалить' })
+      .addTo(m);
     markers.current = L.layerGroup().addTo(m);
     const controller = new AbortController();
     fetch('/land.geojson', { signal: controller.signal })
@@ -88,18 +91,7 @@ export function Map2D({
             .bringToBack();
       })
       .catch(() => {});
-    const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    });
-    let failures = 0;
-    tiles.on('tileerror', () => {
-      if (++failures >= 3) {
-        m.removeLayer(tiles);
-        setOffline(true);
-      }
-    });
-    tiles.addTo(m);
+    setOffline(true);
     m.on('click', (e: L.LeafletMouseEvent) => {
       let lng = ((((e.latlng.lng + 180) % 360) + 360) % 360) - 180;
       lng = Math.round(lng * 1e6) / 1e6;
@@ -186,11 +178,33 @@ export function Map2D({
           Названия
         </button>
       )}
-      {offline && (
-        <div className="map-notice">Тайлы недоступны · базовая карта и точки работают</div>
-      )}
+      {offline && <div className="map-notice">Базовая карта · названия на русском</div>}
       {onPick && <div className="map-notice">Нажмите на карту, чтобы выбрать координаты</div>}
     </div>
+  );
+}
+export function Map2D(props: {
+  places: Place[];
+  selected?: Place | null;
+  onSelect: (p: Place) => void;
+  onPick?: (lat: number, lng: number) => void;
+}) {
+  const [vector, setVector] = useState(webgl);
+  const fallback = <FallbackMap2D {...props} />;
+  return vector ? (
+    <Guard fallback={fallback}>
+      <Suspense
+        fallback={
+          <div className="map-world">
+            <div className="world-loading">Загружаем карту…</div>
+          </div>
+        }
+      >
+        <VectorMap {...props} onFail={() => setVector(false)} />
+      </Suspense>
+    </Guard>
+  ) : (
+    fallback
   );
 }
 function GlobeView({
@@ -251,6 +265,12 @@ function GlobeView({
         reduced ? 0 : 1100,
       );
   }, [selected, ready, reduced]);
+  useEffect(() => {
+    if (!ready) return;
+    const canvas = ref.current?.renderer().domElement;
+    canvas?.addEventListener('webglcontextlost', onFail, { once: true });
+    return () => canvas?.removeEventListener('webglcontextlost', onFail);
+  }, [ready, onFail]);
   const data = clusterPlaces(places, alt);
   const interact = () => {
     setIdle(false);
@@ -338,8 +358,6 @@ function GlobeView({
             });
             setReady(true);
             ref.current?.pointOfView({ lat: 28, lng: 22, altitude: 2.2 }, 0);
-            const canvas = ref.current?.renderer().domElement;
-            canvas?.addEventListener('webglcontextlost', onFail, { once: true });
           }}
         />
       </Suspense>

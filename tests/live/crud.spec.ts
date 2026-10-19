@@ -140,3 +140,69 @@ test('скриншот: настоящий OCR → проверенная кар
   await page.getByRole('button', { name: 'Удалить место', exact: true }).click();
   await expect(page.locator('.place-card')).toHaveCount(0);
 });
+test('личный ключ GPT, готовая карточка через API и отзыв доступа', async ({ page }, info) => {
+  await login(page);
+  const settings = () =>
+    page
+      .getByRole('button', {
+        name: info.project.name.includes('iphone') ? 'Ещё' : 'Настройки',
+        exact: true,
+      })
+      .click();
+  await settings();
+  await page.getByRole('button', { name: 'Создать ключ подключения', exact: true }).click();
+  const key = page.getByLabel('Ключ для поля API Key в настройках Actions');
+  await expect(key).toBeVisible();
+  await expect(key).toHaveAttribute('type', 'password');
+  const token = await key.inputValue();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Скачать схему Actions' }).click();
+  const schema = JSON.parse(readFileSync((await (await download).path())!, 'utf8'));
+  expect(schema.servers[0].url).toBe(process.env.ATLAS_TEST_URL + '/functions/v1/atlas-gpt');
+  const { createHandler } = await import('../../supabase/functions/atlas-gpt/index');
+  const handler = createHandler({
+    url: process.env.ATLAS_TEST_URL!,
+    key: process.env.ATLAS_TEST_ANON_KEY!,
+  });
+  const name = 'Замок из GPT ' + info.project.name;
+  const response = await handler(
+    new Request('https://local/functions/v1/atlas-gpt/places', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        request_id: crypto.randomUUID(),
+        place: {
+          name,
+          country: 'Германия',
+          lat: 47.5576,
+          lng: 10.7498,
+          primary_category: 'castles',
+          description:
+            'О месте\nГотовое описание\nОсобенности\nАрхитектура\nАтмосфера\nВозможное ощущение сказки',
+          tags: ['замок'],
+        },
+      }),
+    }),
+  );
+  expect(response.status).toBe(200);
+  expect((await response.json()).saved).toBe(true);
+  await page.getByRole('button', { name: 'Обновить данные', exact: true }).click();
+  await page.getByRole('button', { name: 'Закрыть', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Поиск мест' }).fill(name);
+  await expect(page.locator('.place-card')).toHaveCount(1);
+  await page.locator('.place-open').click();
+  await expect(page.getByRole('dialog', { name })).toContainText('Возможное ощущение сказки');
+  await page.getByRole('button', { name: 'Закрыть карточку' }).click();
+  await settings();
+  await expect(page.getByLabel('Ключ для поля API Key в настройках Actions')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Отключить доступ GPT', exact: true }).click();
+  await expect(
+    page.getByText('Доступ GPT отключён. Сохранённые места остались в атласе.'),
+  ).toBeVisible();
+  const revoked = await handler(
+    new Request('https://local/functions/v1/atlas-gpt/places', {
+      headers: { authorization: 'Bearer ' + token },
+    }),
+  );
+  expect(revoked.status).toBe(401);
+});

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 test('честная настройка, демо, поиск, фильтры и мобильная карточка', async ({ page }, info) => {
+  await page.route('**/map-ru.json', (route) => route.abort());
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Мир большой. Мечты — общие.' })).toBeVisible();
   await expect(page.getByText('Данные не сохраняются, пока база не подключена.')).toBeVisible();
@@ -35,16 +36,18 @@ test('без WebGL и без тайлов остаётся карта и дос�
       return original.apply(this, [type, ...args] as Parameters<typeof original>);
     } as typeof original;
   });
-  await page.route('https://tile.openstreetmap.org/**', (route) => route.abort());
+  await page.route('https://tiles.openfreemap.org/**', (route) => route.abort());
+  await page.route('**/map-ru.json', (route) => route.abort());
   await page.goto('/');
   await page.getByRole('button', { name: /Посмотреть демонстрационный/ }).click();
   await expect(page.locator('.leaflet-host')).toBeVisible();
-  await expect(page.getByText('Тайлы недоступны · базовая карта и точки работают')).toBeVisible();
+  await expect(page.getByText('Базовая карта · названия на русском')).toBeVisible();
   await expect(page.locator('.map-dot')).toHaveCount(5);
 });
 test('3D-глобус загружает локальную Землю и не ломает страницу', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/map-ru.json', (route) => route.abort());
   await page.goto('/');
   await page.getByRole('button', { name: /Посмотреть демонстрационный/ }).click();
   await expect(page.locator('canvas')).toBeVisible({ timeout: 30000 });
@@ -54,29 +57,9 @@ test('3D-глобус загружает локальную Землю и не �
   expect(errors).toEqual([]);
 });
 
-test('подробные тайлы находятся поверх резервных контуров', async ({ page }) => {
-  // A deterministic successful tile distinguishes layering errors from network outages.
-  await page.route('https://tile.openstreetmap.org/**', (route) =>
-    route.fulfill({
-      contentType: 'image/png',
-      path: 'public/icons/icon-192.png',
-    }),
-  );
-  await page.goto('/');
-  await page.getByRole('button', { name: /Посмотреть демонстрационный/ }).click();
-  await page.getByRole('main').getByRole('button', { name: 'Карта', exact: true }).click();
-  await expect(page.locator('.leaflet-tile-loaded').first()).toBeVisible();
-  await expect(page.locator('.leaflet-atlas-base-pane path').first()).toBeAttached();
-  const order = await page.evaluate(() => {
-    const base = document.querySelector('.leaflet-atlas-base-pane')!;
-    const tiles = document.querySelector('.leaflet-tile-pane')!;
-    return Number(getComputedStyle(base).zIndex) < Number(getComputedStyle(tiles).zIndex);
-  });
-  expect(order).toBe(true);
-  await expect(page.getByText('Тайлы недоступны · базовая карта и точки работают')).toHaveCount(0);
-});
 test('названия стран и городов доступны на глобусе и без тайлов', async ({ page }, info) => {
-  await page.route('https://tile.openstreetmap.org/**', (route) => route.abort());
+  await page.route('https://tiles.openfreemap.org/**', (route) => route.abort());
+  await page.route('**/map-ru.json', (route) => route.abort());
   await page.goto('/');
   await page.getByRole('button', { name: /Посмотреть демонстрационный/ }).click();
   const toggle = page.getByRole('button', { name: 'Названия', exact: true });
@@ -99,11 +82,11 @@ test('названия стран и городов доступны на гло
   }
   await expect(page.locator('.globe-labels .city').first()).toBeVisible();
   await page.getByRole('main').getByRole('button', { name: 'Карта', exact: true }).click();
-  await expect(page.getByText('Тайлы недоступны · базовая карта и точки работают')).toBeVisible();
+  await expect(page.getByText('Базовая карта · названия на русском')).toBeVisible();
   await expect(page.locator('.map-labels .country').first()).toBeVisible();
   const map = page.locator('.leaflet-host');
   // Zoom into a visible map region; more city labels become available as the scale increases.
-  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await page.getByRole('button', { name: 'Приблизить', exact: true }).click();
   await expect(page.locator('.map-labels .city').first()).toBeVisible();
   await expect(map).toBeVisible();
   await page.screenshot({

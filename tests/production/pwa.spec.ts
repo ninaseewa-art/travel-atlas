@@ -14,6 +14,7 @@ test('production PWA: manifest, иконки, service worker, оболочка �
     expect(r.ok()).toBe(true);
     expect(r.headers()['content-type']).toContain('image/png');
   }
+  await page.route('**/map-ru.json', (route) => route.abort());
   await page.goto('/');
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();
@@ -25,10 +26,56 @@ test('production PWA: manifest, иконки, service worker, оболочка �
   await expect(
     page.getByText('Нет сети. Просмотр загруженных данных; изменения недоступны.'),
   ).toBeVisible();
+  await page.route('**/map-ru.json', (route) => route.abort());
   await page.goto('/');
   await page.getByRole('button', { name: /Посмотреть демонстрационный/ }).click();
   await page.getByRole('button', { name: 'Карта', exact: true }).click();
   await expect(page.locator('.map-dot')).toHaveCount(5);
   await expect(page.locator('.leaflet-atlas-base-pane path')).not.toHaveCount(0);
   await expect(page.locator('.map-labels .country').first()).toBeVisible();
+});
+test('production CSP: локальный worker векторной карты загружается и обрабатывает геоданные', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/map-ru.json', (route) =>
+    route.fulfill({
+      json: {
+        version: 8,
+        sources: {
+          sample: {
+            type: 'geojson',
+            data: {
+              type: 'FeatureCollection',
+              features: [
+                {
+                  type: 'Feature',
+                  properties: {},
+                  geometry: { type: 'Point', coordinates: [12, 28] },
+                },
+              ],
+            },
+          },
+        },
+        layers: [
+          { id: 'background', type: 'background', paint: { 'background-color': '#c3dce2' } },
+          {
+            id: 'sample',
+            type: 'circle',
+            source: 'sample',
+            paint: { 'circle-radius': 8, 'circle-color': '#356b5d' },
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: /Посмотреть демонстрационный/ }).click();
+  await page.getByRole('main').getByRole('button', { name: 'Карта', exact: true }).click();
+  await expect(page.locator('.vector-map-host')).toHaveAttribute('aria-busy', 'false', {
+    timeout: 20000,
+  });
+  await expect(page.locator('.vector-map-host .map-dot')).toHaveCount(5);
+  expect(errors).toEqual([]);
 });
