@@ -53,3 +53,25 @@ test('3D-глобус загружает локальную Землю и не �
   await page.screenshot({ path: `test-results/${info.project.name}-globe.png`, fullPage: true });
   expect(errors).toEqual([]);
 });
+
+test('подробные тайлы находятся поверх резервных контуров', async ({ page }) => {
+  // A deterministic successful tile distinguishes layering errors from network outages.
+  await page.route('https://tile.openstreetmap.org/**', (route) =>
+    route.fulfill({
+      contentType: 'image/png',
+      path: 'public/icons/icon-192.png',
+    }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: /Посмотреть демонстрационный/ }).click();
+  await page.getByRole('main').getByRole('button', { name: 'Карта', exact: true }).click();
+  await expect(page.locator('.leaflet-tile-loaded').first()).toBeVisible();
+  await expect(page.locator('.leaflet-atlas-base-pane path').first()).toBeAttached();
+  const order = await page.evaluate(() => {
+    const base = document.querySelector('.leaflet-atlas-base-pane')!;
+    const tiles = document.querySelector('.leaflet-tile-pane')!;
+    return Number(getComputedStyle(base).zIndex) < Number(getComputedStyle(tiles).zIndex);
+  });
+  expect(order).toBe(true);
+  await expect(page.getByText('Тайлы недоступны · базовая карта и точки работают')).toHaveCount(0);
+});

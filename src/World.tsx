@@ -1,5 +1,6 @@
 import { Component, Suspense, lazy, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { Mesh, MeshPhongMaterial } from 'three';
 import type { GlobeMethods } from 'react-globe.gl';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -63,6 +64,10 @@ export function Map2D({
     if (!host.current) return;
     const m = L.map(host.current, { zoomControl: false, worldCopyJump: true }).setView([28, 12], 2);
     map.current = m;
+    // A vector layer in overlayPane stays above raster tiles even after bringToBack().
+    const basePane = m.createPane('atlas-base');
+    basePane.style.zIndex = '150';
+    basePane.style.pointerEvents = 'none';
     L.control.zoom({ position: 'bottomright' }).addTo(m);
     markers.current = L.layerGroup().addTo(m);
     const controller = new AbortController();
@@ -71,7 +76,8 @@ export function Map2D({
       .then((data) => {
         if (!controller.signal.aborted)
           L.geoJSON(data, {
-            style: { color: '#728f81', weight: 0.6, fillColor: '#263f43', fillOpacity: 1 },
+            pane: 'atlas-base',
+            style: { color: '#a8bcb0', weight: 0.5, fillColor: '#eef1e7', fillOpacity: 1 },
             interactive: false,
           })
             .addTo(m)
@@ -165,7 +171,7 @@ function GlobeView({
   useEffect(() => {
     const texture = new Image();
     texture.onerror = onFail;
-    texture.src = '/textures/earth.jpg';
+    texture.src = '/textures/earth-night.jpg';
     return () => {
       texture.onerror = null;
     };
@@ -237,9 +243,9 @@ function GlobeView({
           width={size.width}
           height={size.height}
           backgroundColor="rgba(0,0,0,0)"
-          globeImageUrl="/textures/earth.jpg"
+          globeImageUrl="/textures/earth-night.jpg"
           showAtmosphere
-          atmosphereColor="#77b8d1"
+          atmosphereColor="#68b4ef"
           atmosphereAltitude={0.16}
           animateIn={!reduced}
           htmlElementsData={data}
@@ -272,6 +278,17 @@ function GlobeView({
           }}
           onZoom={(p) => setAlt(p.altitude)}
           onGlobeReady={() => {
+            ref.current?.scene().traverse((object) => {
+              const material = (object as Mesh).material as MeshPhongMaterial | undefined;
+              if (material?.isMeshPhongMaterial && material.map) {
+                // The surface texture also emits light, so cities stay lit while rotating.
+                material.emissive.set('#ffffff');
+                material.emissiveMap = material.map;
+                material.emissiveIntensity = 1.4;
+                material.shininess = 0;
+                material.needsUpdate = true;
+              }
+            });
             setReady(true);
             ref.current?.pointOfView({ lat: 28, lng: 22, altitude: 2.2 }, 0);
             const canvas = ref.current?.renderer().domElement;
