@@ -381,25 +381,20 @@ function Atlas({
       setPending(false);
     }
   };
-  const save = async (p: Place, date?: string, screenshot?: File) => {
-    if (demo) throw new Error('Для сохранения войдите в своё пространство.');
+  const save = async (p: Place, date?: string) => {
     if (!online) throw new Error('Нет сети — место не сохранено. Не закрывайте форму.');
     const id = await savePlace({ ...p, workspace_id: w! }, date);
-    let photoWarning = '';
-    if (screenshot) {
-      try {
-        await uploadPhoto(w!, id, screenshot, 'Скриншот, добавленный владельцем', 0);
-      } catch (e) {
-        photoWarning = `Место сохранено, но скриншот загрузить не удалось: ${message(e)}. Добавьте его повторно через «Добавить фотографии» в карточке.`;
-      }
-    }
     await refresh();
     setSelectedId(id);
     setEditor(null);
-    setNotice(photoWarning || 'Место сохранено в базе.');
+    setNotice('Место сохранено в базе.');
   };
   const newPlace = () => {
-    setEditor({ ...blankPlace(), workspace_id: w ?? '' });
+    if (demo) {
+      setNotice('В демопросмотре сохранение отключено. Подключите Supabase по README.');
+      return;
+    }
+    setEditor({ ...blankPlace(), workspace_id: w! });
   };
   const nav = (kind: string) => {
     setSelectedId(null);
@@ -888,7 +883,6 @@ function Atlas({
           collections={collections}
           onClose={() => setEditor(null)}
           onSave={save}
-          canSave={!demo}
         />
       )}
       {filterOpen && (

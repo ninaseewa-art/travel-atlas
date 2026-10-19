@@ -7,7 +7,3 @@ Downloaded from https://github.com/nvkelso/natural-earth-vector/blob/master/geoj
 Tile policy: https://operations.osmfoundation.org/policies/tiles/ — no prefetching, no offline tile download.
 React MIT; Vite MIT; Three.js MIT; react-globe.gl MIT; Leaflet BSD-2-Clause; lucide ISC; Supabase JS MIT; TanStack Query MIT; Zod MIT.
 Illustrated placeholders and app icons are generated for this project, not photographs of real destinations.
-Screenshot OCR: Tesseract.js (Apache-2.0), tesseract.js-core / Tesseract (Apache-2.0); Russian/English tessdata models, Apache-2.0. Local assets are built from integrity-pinned npm packages. Licenses: /ocr/TESSERACT-JS-LICENSE.txt and /ocr/TESSERACT-CORE-LICENSE.txt.
-Explicit place search: Nominatim / © OpenStreetMap contributors, https://nominatim.org/release-docs/latest/api/Overview/ ; use policy https://operations.osmfoundation.org/policies/nominatim/ . No automatic OCR text or image upload to the geocoder.
-
-Night Earth: NASA / Visible Earth, distributed with three-globe (example/img/earth-night.jpg). NASA imagery is public domain. https://visibleearth.nasa.gov/collection/1484/blue-marble

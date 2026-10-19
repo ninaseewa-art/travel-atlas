@@ -10,5 +10,3 @@ test-results/
 *.tsbuildinfo
 supabase/.temp/
 supabase/.branches/
-
-public/ocr/
