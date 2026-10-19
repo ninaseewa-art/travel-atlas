@@ -1,0 +1,9 @@
+Earth texture: NASA Visible Earth / Blue Marble (public domain US government imagery).
+Distributed via three-globe: https://github.com/vasturiano/three-globe/tree/master/example/img
+Source: https://visibleearth.nasa.gov/collection/1484/blue-marble
+Natural Earth land boundaries, 1:110m: public domain. https://www.naturalearthdata.com/about/terms-of-use/
+Downloaded from https://github.com/nvkelso/natural-earth-vector/blob/master/geojson/ne_110m_land.geojson
+2D online tiles: © OpenStreetMap contributors, ODbL; https://www.openstreetmap.org/copyright
+Tile policy: https://operations.osmfoundation.org/policies/tiles/ — no prefetching, no offline tile download.
+React MIT; Vite MIT; Three.js MIT; react-globe.gl MIT; Leaflet BSD-2-Clause; lucide ISC; Supabase JS MIT; TanStack Query MIT; Zod MIT.
+Illustrated placeholders and app icons are generated for this project, not photographs of real destinations.

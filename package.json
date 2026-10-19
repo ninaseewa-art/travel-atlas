@@ -1,0 +1,50 @@
+{
+  "name": "nash-atlas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:integration": "node scripts/integration.mjs",
+    "preview": "vite preview --host 0.0.0.0",
+    "test:local": "node scripts/test-local.mjs",
+    "format": "prettier --write src tests scripts *.ts *.js *.json README.md",
+    "test:pwa": "playwright test --config playwright.prod.config.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.99.0",
+    "@tanstack/react-query": "^5.90.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-globe.gl": "^2.35.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
+    "@eslint/js": "^9.39.0",
+    "@playwright/test": "^1.56.0",
+    "@types/leaflet": "^1.9.20",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/three": "^0.182.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "eslint": "^9.39.0",
+    "globals": "^16.5.0",
+    "prettier": "^3.9.10",
+    "supabase": "^2.121.0",
+    "typescript-eslint": "^8.48.0",
+    "vite": "^7.2.0",
+    "vite-plugin-pwa": "^1.1.0",
+    "vitest": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}
